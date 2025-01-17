@@ -1,0 +1,12 @@
+= Travaux pratiques avec GNS3
+:revealjs_theme: beige
+:source-highlighter: highlight.js
+:icons: font
+
+== TPs
+
+* link:./tp-1.html[TP 1]
+* link:./tp-2.html[TP 2]
+* link:./tp-3.html[TP 3]
+
+

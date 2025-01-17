@@ -1,0 +1,809 @@
+= TP 1
+:revealjs_theme: beige
+:source-highlighter: highlight.js
+:icons: font
+
+== Partie 1 le Routage Inter-VLAN
+
+== Equipement
+
+* deux ordinateurs Alpine Linux 
+* un routeur StoneWork
+* un OpenvSwtich
+
+=== ...
+
+== Objectifs
+
+[%step]
+* Revoir les mécanismes de segmentation d'un réseau 
+* Apprendre à configurer des appareils qui ne sont pas de la marque CISCO
+
+=== ...
+
+* Utiliser des ACLs
+* Comprendre l'intérêt de la QoS, du port mirroring et de wireshark
+
+
+== Partie 1
+
+=== Définition
+
+Le routage inter-VLAN permet à des dispositifs situés dans des VLANs différents de communiquer entre eux. 
+
+=== ...
+
+Ce routage est essentiel lorsque vous segmentez votre réseau en VLANs pour des raisons de **performance**, de **sécurité** ou d'**organisation**.
+
+
+=== Rappel de nos chers vieux concepts
+
+
+=== VLAN : 
+
+Un VLAN (Virtual LAN) est une sous-réseau logique qui regroupe des dispositifs, même s'ils sont connectés à des ports physiques différents sur le même switch.
+
+
+=== Isolation : 
+
+Par défaut, les VLANs sont isolés les uns des autres.
+
+=== Routage Inter-VLAN : 
+
+Il nécessite un routeur ou un switch de niveau 3 (ou un routeur connecté à un switch) pour permettre la communication entre VLANs.
+
+=== Tâche n°1
+
+Votre objectif est de récupérer d'une façon ou d'une autre OpenvSwitch sur GNS3 et StoneWork
+
+
+=== Topologie Typique
+
+=== Switch de niveau 2 (Open vSwitch en l'occurrence) :
+
+=== Configure les VLANs.
+
+* Segmente les ports en différents VLANs.
+
+=== Routeur ou Switch de niveau 3 (Stonework) :
+
+Il effectue le routage entre les VLANs.
+Les interfaces (ou sous-interfaces) sont configurées pour chaque VLAN.
+
+
+=== Dispositifs (Alpine Linux) :
+
+Appartiennent à des VLANs différents et testent la communication.
+
+
+== Étapes pour Configurer le Routage Inter-VLAN
+
+=== 1. Configuration des VLANs sur le Switch (Open vSwitch)
+
+* Créez deux VLANs (par exemple, VLAN 10 et VLAN 20).
+
+
+=== ...
+
+
+* Configurez les ports sur le switch pour appartenir à un VLAN spécifique.
+
+=== ...
+
+Je vous facilite la tâche et vous fournis quelques commandes
+
+=== Commandes pour Open vSwitch :
+
+[source, bash]
+----
+# La première chose à faire est de créer un bridge
+ovs-vsctl add-br ovs-br0                 
+
+# Vous ajoutez ensuite port1 au VLAN 10
+ovs-vsctl add-port ovs-br0 port1 tag=10  
+
+# port2 au VLAN 20
+ovs-vsctl add-port ovs-br0 port2 tag=20  
+
+# port3 en mode trunk pour le routeur
+ovs-vsctl add-port ovs-br0 port3         
+----
+
+== 2. Configuration des Adresses IP sur les Machines Alpine
+
+Attribuez des adresses IP statiques correspondant aux VLANs.
+
+
+=== Machine Alpine 1 (VLAN 10) :
+[source, bash]
+----
+ip addr add 192.168.10.2/24 dev eth0
+ip link set eth0 up
+----
+
+
+=== Machine Alpine 2 (VLAN 20) :
+[source, bash]
+----
+ip addr add 192.168.20.2/24 dev eth0
+ip link set eth0 up
+----
+
+
+=== Vérifiez les adresses IP avec :
+
+[source, bash]
+----
+ip addr show
+----
+
+
+== 3. Configuration du Routeur Stonework
+
+* Connectez le routeur au switch via un port trunk.
+* Configurez des sous-interfaces pour chaque VLAN.
+
+=== Commandes générales pour le routeur Stonework :
+
+
+=== Activation de l'interface trunk :
+
+[source, bash]
+----
+interface gigabitEthernet 0/0
+no shutdown
+----
+
+
+=== Configuration des sous-interfaces pour les VLANs :
+
+Je pense que cette partie vous sera très familière
+
+=== VLAN 10 :
+[source, bash]
+----
+interface gigabitEthernet 0/0.10
+encapsulation dot1Q 10
+ip address 192.168.10.1 255.255.255.0
+----
+
+
+=== VLAN 20 :
+[source, bash]
+----
+interface gigabitEthernet 0/0.20
+encapsulation dot1Q 20
+ip address 192.168.20.1 255.255.255.0
+----
+
+
+== 4. Configuration de la Passerelle sur les Machines Alpine
+
+Attribuez l'adresse IP de la sous-interface du routeur comme passerelle par défaut pour chaque machine.
+
+
+=== Machine Alpine 1 (VLAN 10) :
+
+[source, bash]
+----
+ip route add default via 192.168.10.1
+----
+
+
+=== Machine Alpine 2 (VLAN 20) :
+
+[source, bash]
+----
+ip route add default via 192.168.20.1
+----
+
+
+== 5. Test de la Communication
+
+=== Ping entre les machines Alpine :
+
+C'est le moment de tester la latence et la disponibilité, un ping depuis Alpine 1 vers Alpine 2 devrait faire l'affaire :
+
+[source, bash]
+----
+ping 192.168.20.2
+----
+
+=== Dépannage si le ping échoue :
+
+Je vous conseille de vérifier les adresses IP et les passerelles.
+
+=== ...
+
+Par ailleurs, les interfaces sur le routeur doivent être activées (no shutdown).
+
+=== ...
+
+En outre, cela pourrait être malin de tester la connectivité des VLANs de façon individuelle avec le routeur.
+
+
+
+=== Partie 2
+
+
+Bon, les ACLs est concrètement LE grand objectif de l'utilisation de GNS3 pour ce TP.
+
+
+=== ...
+
+Il faut absolument savoir configurer des ACLs pour restreindre ou autoriser certains types de trafic entre VLANs, et implémenter des QoS entre VLANs.
+
+=== ...
+
+Votre première tâche va donc consister à configurer des ACLs pour Bloquer le Trafic ICMP entre VLAN 10 et VLAN 20
+
+=== ...
+
+Les Access Control Lists (ACLs) permettent de filtrer le trafic en fonction de critères spécifiques. 
+
+=== ...
+
+Ci-dessous je vous montrer comment bloquer les pings (ICMP) entre VLAN 10 et VLAN 20.
+
+=== ...
+
+
+== Étapes
+
+* Créer une ACL pour Bloquer le Trafic ICMP
+
+Sur le routeur Stonework exécutez ces commandes :
+
+[source, bash]
+----
+access-list 100 deny icmp 192.168.10.0 0.0.0.255 192.168.20.0 0.0.0.255
+access-list 100 permit ip any any
+----
+
+
+Comme vous pouvez l'observer avec le verbe "deny", la première ligne bloque le trafic ICMP entre les deux sous-réseaux (VLAN 10 : 192.168.10.0/24 et VLAN 20 : 192.168.20.0/24).
+
+=== ...
+
+Concernant la deuxième ligne, elle permet tout autre type de trafic.
+Vous devez ABSOLUMENT écrire cette règle sinn TOUS LES AUTRES trafics seront bloqués.
+
+
+=== ...
+
+Après avoir défini l'ACL, il faut maintenant l'appliquer à une interface VLAN
+
+== Appliquer l'ACL à l'Interface VLAN
+
+Appliquons donc l'ACL sur l'interface correspondant à VLAN 10 ou VLAN 20. 
+
+=== Par exemple, pour VLAN 10 :
+
+
+[source, bash]
+----
+interface gigabitEthernet 0/0.10
+ip access-group 100 in
+----
+
+
+=== ...
+
+Après une configuration, je vous conseille de teste unitairement ce que vous venez d'implémenter.
+
+
+== Tester la Configuration
+
+
+Depuis une machine Alpine Linux dans VLAN 10, essayez de pinguer une machine dans VLAN 20 :
+[source, bash]
+----
+ping 192.168.20.2
+----
+
+Le ping devrait échouer, confirmant que l'ICMP est bloqué.
+
+=== ...
+
+Testez un autre type de trafic, comme HTTP, pour vérifier que d'autres communications passent.
+
+
+=== Ajout de politiques de sécurité :
+
+Configurez des ACLs sur le routeur pour restreindre ou autoriser certains types de trafic entre VLANs. 
+
+=== Exemple : 
+
+Bloquez le trafic ICMP entre VLAN 10 et VLAN 20.
+
+=== ...
+
+C'est le moment d'évoquer une autre notion importante. La Qualité de service
+
+
+== 2. Implémenter la QoS (Quality of Service) entre VLANs
+
+La QoS permet de prioriser certains types de trafic, ce qui garantit en fait une meilleure performance pour les applications critiques, même en cas de **congestion**.
+
+
+== Étapes
+
+* Configurer des Classes de Trafic 
+* Identifiez les types de trafic à prioriser. 
+
+
+Par exemple, vous pouvez prioriser HTTP (port 80/443) et déprioriser ICMP. Certes avec vos collègues nous avons parlé hier de la VoIP mais ici prenons un exemple simple.
+
+
+=== Créez des classes de trafic sur le routeur :
+
+[source, bash]
+----
+class-map match-any PRIORITY-HTTP
+match protocol http
+match protocol https
+
+class-map match-any LOW-PRIORITY
+match protocol icmp
+Configurer des Politiques de QoS
+----
+
+
+=== Créez des politiques pour appliquer des priorités différentes :
+
+[source, bash]
+----
+policy-map VLAN-QOS
+class PRIORITY-HTTP
+  priority percent 50
+class LOW-PRIORITY
+  bandwidth percent 10
+class class-default
+  fair-queue
+----
+
+
+=== ...
+
+Dans le quiz d'hier nous avons évoqué la bande passante, comme étant une méthode. Mais différentes définitions existent et vous pouvez considérer que en l'occurence ...
+
+=== ...
+
+elle désigne la quantité de trafic réseau (donnée en bits par seconde) qu'une classe de trafic peut utiliser sur une interface réseau donnée.
+
+=== ...
+
+Ainsi, la classe PRIORITY-HTTP reçoit 50 % de la bande passante.
+
+=== ...
+
+La classe LOW-PRIORITY (ICMP) reçoit seulement 10 %.
+
+=== ...
+
+Tout autre trafic est traité de manière équitable avec **class-default**.
+
+=== ...
+
+Encore une fois, un peu comme l'ACL que l'on définit avant de l'appliquer à une interface, nous allons appliquez cette politique de priorisation à une interface.
+
+
+== Appliquer la Politique à une Interface
+
+
+=== Appliquez cette politique sur les interfaces VLAN :
+
+[source, bash]
+----
+interface gigabitEthernet 0/0.10
+service-policy output VLAN-QOS
+
+interface gigabitEthernet 0/0.20
+service-policy output VLAN-QOS
+----
+
+
+=== Tester la Configuration
+
+Générez du trafic HTTP (par exemple, avec **curl**) depuis une machine Alpine Linux.
+
+=== ...
+
+Lancez un ping flood avec ping -f pour générer un trafic ICMP important.
+
+=== ...
+
+Observez que le trafic HTTP reste fluide grâce à la priorisation, même en cas de surcharge.
+
+== Petits tips  pour la QoS et les ACLs
+
+
+Je vous conseille modestement, je l'espère, d'Utiliser des outils comme **Wireshark** ou **tcpdump** sur les machines Alpine ...
+
+=== ...
+
+pour vérifier que les règles QoS et ACLs fonctionnent comme prévu. Ensuite vu qu'on travaille avec GNS3, on peut faire plus simple.
+
+
+=== ...
+
+En fait, il faut jeter un coup d'oeil aux statistiques des interfaces pour voir l'impact des politiques QoS :
+
+
+[source, bash]
+----
+show policy-map interface
+----
+
+
+== Partie 4
+
+
+Je sais que vous connaissez tous cela par coeur. Mais il va ici falloir ajouter un serveur DHCP
+
+=== ...
+
+Il va distribuer des adresses IP dynamiques à chaque VLAN.
+
+=== ...
+
+Dans votre configuration, vous pouvez utiliser un serveur DHCP centralisé pour gérer les deux VLANs via le routeur ou directement sur une machine Linux.
+
+=== ...
+
+Le serveur DHCP sera configuré pour fournir des adresses IP dynamiques dans ces deux sous-réseaux.
+
+=== ...
+
+Ainsi, ce qu'il vous reste à faire est de connecter un serveur DHCP (par exemple, une machine Alpine Linux) au switch Open vSwitch via une interface trunk.
+
+=== ...
+
+Autrement dit, vous pouvez rajouter à votre topologie un dispositif Alpine Linux
+
+== 2. Configuration d’un Serveur DHCP sur Linux
+
+
+=== a) Installer et Configurer un Serveur DHCP
+
+Sur une machine Alpine Linux (la numéro 3 pour le coup) installez un serveur 
+
+=== DHCP :
+
+[source, bash]
+----
+apk add dhcp
+----
+
+Passons à la configuration de notre nouveau jouet
+
+=== b) Configuration du Fichier DHCP
+
+Modifiez le fichier de configuration DHCP pour définir des pools d’adresses IP pour chaque VLAN :
+
+[source, bash]
+----
+nano /etc/dhcp/dhcpd.conf
+----
+
+
+=== Ajoutez la configuration suivante :
+
+[source, txt]
+----
+
+
+# Définissons les options globales
+# En fait c'est la durée du bail DHCP par défaut
+# Et sa durée maximale
+default-lease-time 600; 
+max-lease-time 7200; 
+
+# Pool pour VLAN 10
+
+subnet 192.168.10.0 netmask 255.255.255.0 {
+  range 192.168.10.100 192.168.10.200;
+  option routers 192.168.10.1;
+  option domain-name-servers 8.8.8.8, 8.8.4.4;
+}
+
+# Pool pour VLAN 20
+subnet 192.168.20.0 netmask 255.255.255.0 {
+  range 192.168.20.100 192.168.20.200;
+  option routers 192.168.20.1;
+  option domain-name-servers 8.8.8.8, 8.8.4.4;
+}
+
+----
+
+
+=== c) Démarrer le Serveur DHCP
+
+=== Démarrez le serveur DHCP :
+
+[source, bash]
+----
+service dhcpd start
+----
+
+
+== 3. Relais DHCP sur le Routeur
+
+Le serveur DHCP peut ne pas être directement connecté à chaque VLAN. Nous avions déjà vu cela d'ailleurs.  
+
+=== ...
+
+Vous devez configurer un **relais DHCP ** sur le routeur Stonework pour transférer les requêtes DHCP entre les VLANs et le serveur DHCP.
+
+
+=== a) Activer le Relais DHCP
+
+
+Sur le routeur Stonework, configurez le relais DHCP :
+
+[source, bash]
+----
+interface gigabitEthernet 0/0.10
+ip helper-address 192.168.10.1  # Adresse IP du serveur DHCP
+
+interface gigabitEthernet 0/0.20
+ip helper-address 192.168.10.1  # Adresse IP du serveur DHCP
+----
+
+
+== 4. Tester la Configuration
+
+
+=== Machines Alpine Linux : 
+
+Configurez chaque machine pour obtenir une adresse IP dynamique.
+
+
+=== Sur VLAN 10 :
+
+[source, bash]
+----
+dhclient eth0
+----
+
+
+=== Sur VLAN 20 :
+
+[source, bash]
+----
+dhclient eth0
+----
+
+
+=== Vérifiez les adresses IP :
+
+
+Normalement, cette partie-là devrait fonctionner 😅.
+
+=== ...
+
+Les machines devraient obtenir des adresses IP dans les plages définies dans le **fichier dhcpd.conf.**
+
+
+
+=== Tester la Connectivité :
+
+
+Bon comme d'habitude: 
+
+* Pinger le routeur (192.168.10.1 ou 192.168.20.1) depuis chaque machine.
+* Pinger une machine de VLAN 10 à VLAN 20 pour vérifier le routage inter-VLAN.
+
+== Partie 5
+
+Il s'agit d'une notion très rapidement effleuré hier mais très importante pour des raisons de détection d'anomalies réseau : **le port mirroring**
+
+=== ...
+
+L'objectif va être de configurer un port mirroring sur OpenvSwitch qui va donc par définition, permettre de capturer et d'analyser le trafic réseau, y compris celui qui circule entre les VLANs. 
+
+
+=== ...
+
+Finalement ce long tp sera l'occassion de vous donner la définition 
+
+== le Port Mirroring
+
+Port mirroring (ou SPAN - Switched Port Analyzer) copie le trafic d'un ou plusieurs ports ou VLANs vers un autre port du switch.
+
+=== ...
+
+Ce port miroir est ensuite connecté à un outil d'analyse, comme Wireshark, pour inspecter les paquets.
+
+
+== 2. Préparation de la Topologie
+
+=== Open vSwitch : 
+
+Vous avez déjà configuré deux VLANs (VLAN 10 et VLAN 20) voire trois puisque le serveur DHCP veut faire partie d'un VLAN_SERVICES.
+
+=== Ordinateurs Alpine Linux :
+
+Un ordinateur est connecté au VLAN 10.
+Un autre est connecté au VLAN 20.
+
+=== Port Miroir :
+
+Ajoutez un port supplémentaire au switch Open vSwitch pour connecter une machine dédiée à l’analyse du trafic. 
+
+=== ...
+
+Vous pourriez d'ailleurs mettre cela dans un VLAN_MANAGEMENT ou VLAN_SUPERVISION
+
+=== ...
+
+Ce port recevra une copie du trafic des VLANs sélectionnés.
+
+
+
+== Configuration du Port Mirroring
+
+
+=== Étape 1 : Ajouter un Port d'Analyse
+
+
+Ajoutez un port dédié au mirroring sur votre switch Open vSwitch :
+
+[source, bash]
+----
+ovs-vsctl add-port ovs-br0 port-mirror
+port-mirror est le port sur lequel le trafic sera copié.
+----
+
+Connectez une machine exécutant Wireshark à ce port.
+
+== Étape 2 : Configurer la Réplication du Trafic
+
+
+Pour copier le trafic de VLAN 10 et VLAN 20 vers le port miroir :
+
+[source, bash]
+----
+ovs-vsctl -- set Bridge ovs-br0 mirrors=@m \
+    -- --id=@m create Mirror name=mymirror \
+    select-vlan=10,20 output-port=port-mirror
+----
+
+=== Conseil
+
+Faites attention à la syntaxe les \ signifie que la commande continue à la ligne qui suit le retour charriot. Vous pourriez être amené à revoir cela
+
+=== ...
+
+
+=== Étape 3 : Vérifier la Configuration
+
+
+
+=== Vérifiez que le port mirroring est correctement configuré :
+
+[source, bash]
+----
+ovs-vsctl list Mirror
+----
+
+
+== 4. Installer et Lancer Wireshark
+
+Sur une machine dédiée à l'analyse (l'Alpine Linux n°4), vous allez Installer Wireshark ou TShark:
+
+[source, bash]
+----
+apk add wireshark
+----
+
+=== ...
+
+
+Si vous utilisez une autre distribution (Ubuntu, Debian, etc.) cela sera avec aptitude :
+
+
+[source, bash]
+----
+sudo apt install wireshark
+----
+
+
+=== Lancer Wireshark :
+
+=== Démarrez Wireshark :
+
+[source, bash]
+----
+wireshark
+----
+
+Sélectionnez l'interface connectée au port-mirror.
+
+=== Configurer un Filtre :
+
+Pour analyser uniquement le trafic des VLANs 10 et 20, utilisez un filtre comme :
+
+=== ...
+
+[source, bash]
+----
+vlan.id == 10 || vlan.id == 20
+----
+
+=== ...
+
+Vu que nous avons fait du rootme il y a deux jours cela doit vous paraître encore frais 🤣
+
+
+== 5. Générer du Trafic entre VLANs
+
+=== Depuis les machines Alpine Linux :
+
+=== Envoyez du trafic :
+
+[source, bash]
+----
+ping 192.168.20.2
+curl http://192.168.20.2
+----
+
+=== ...
+
+Ces actions vont en réalité génèrer des paquets **ICMP** ou HTTP visibles sur Wireshark.
+
+
+
+=== Analyser les Paquets :
+
+
+=== Dans Wireshark, observez :
+
+* Les entêtes Ethernet, IP et VLAN.
+* Le routage du trafic entre VLANs.
+
+== 6. Résultat Attendu
+
+* Wireshark capture le trafic des VLANs 10 et 20.
+
+=== ...
+
+* Vous pouvez dans un second temps, analyser les paquets, visualiser les adresses IP/MAC, et inspecter les protocoles utilisés.
+
+=== ...
+
+
+Alors pour ceux qui veulent aller plus loin il y a quelques petits filtres encore plus précis
+
+=== ...
+
+On peut ainsi analyser uniquement le trafic ICMP :
+
+
+[source, bash]
+----
+icmp && (vlan.id == 10 || vlan.id == 20)
+----
+
+
+=== Analysez le trafic HTTP/HTTPS :
+
+[source, bash]
+----
+http || tls
+----
+
+=== Tester des Politiques ACLs ou QoS :
+
+Vérifiez si les règles ACLs ou QoS affectent le trafic (latence, priorités, paquets bloqués).
+
+
+
+
+
+
+
+
+
+
+

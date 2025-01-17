@@ -1,0 +1,186 @@
+= TP 3
+
+== Partie 1 : Protocole de routage dynamique
+
+
+== Introduction
+
+Nous allons ici essayer de mettre en poeuvre un protocole de routage dynamique (OSPF, RIP ou BGP) ...
+
+=== ...
+
+entre le routeur Stonework et les sous-réseaux connectés est avec pour objectif de comprendre comment les routes sont échangées dans un réseau. 
+
+
+== 1. Utiliser OSPF (Open Shortest Path First)
+
+OSPF est un protocole de routage dynamique basé sur l'état des liens, nous l'avons vu en cours. 
+
+=== ...
+
+Il calcule les meilleures routes en fonction des coûts.
+
+Configuration OSPF sur Stonework
+
+=== Activez OSPF sur le routeur :
+
+[source, bash]
+----
+router ospf 1
+----
+
+1 est le numéro de processus OSPF (identifiant local sur le routeur).
+
+=== Déclarez les réseaux à annoncer : Supposons que vos sous-réseaux sont :
+
+VLAN 10 : 192.168.10.0/24
+VLAN 20 : 192.168.20.0/24
+
+[source, bash]
+----
+network 192.168.10.0 0.0.0.255 area 0
+network 192.168.20.0 0.0.0.255 area 0
+----
+
+
+=== Vérifiez la configuration : Affichez les routes apprises via OSPF :
+
+[source, bash]
+----
+show ip ospf neighbor
+show ip route ospf
+----
+
+
+=== Testez la connectivité :
+
+Depuis les machines Alpine dans chaque VLAN, utilisez des commandes comme ping ou curl pour vérifier si le routage est fonctionnel.
+
+
+
+
+== 2. Utiliser RIP (Routing Information Protocol)
+
+RIP est un protocole de routage simple basé sur la distance (nombre de sauts).
+
+Nous allons configurer ensemble Stonework
+
+=== ...
+
+Configuration RIP sur Stonework
+
+=== Activez RIP sur le routeur :
+
+[source, bash]
+----
+router rip
+version 2
+----
+
+
+=== Déclarez les réseaux à inclure :
+
+[source, bash]
+----
+network 192.168.10.0
+network 192.168.20.0
+----
+
+
+=== Vérifiez la configuration : 
+
+Affichez les routes apprises via RIP :
+
+[source, bash]
+----
+show ip rip database
+show ip route rip
+----
+
+
+
+=== Testez la connectivité :
+
+Les machines Alpine Linux dans VLAN 10 et VLAN 20 devraient pouvoir communiquer en utilisant les routes échangées par RIP.
+
+
+
+== 3. Utiliser BGP (Border Gateway Protocol)
+
+BGP est souvent utilisé pour le routage entre grands réseaux (WAN/Internet), mais il peut aussi fonctionner pour des réseaux internes.
+
+
+=== Configuration BGP sur Stonework
+
+Activez BGP sur le routeur : Déclarez un numéro d'AS (Autonomous System) unique pour votre réseau, par exemple 65001 :
+
+[source, bash]
+----
+router bgp 65001
+----
+
+
+=== Ajoutez les réseaux locaux :
+
+[source, bash]
+----
+network 192.168.10.0 mask 255.255.255.0
+network 192.168.20.0 mask 255.255.255.0
+----
+
+
+=== Établissez une session BGP (si un autre routeur BGP est connecté) : 
+
+Supposons que vous avez un voisin BGP dans AS 65002 avec l'IP 192.168.30.1 :
+
+[source, bash]
+----
+neighbor 192.168.30.1 remote-as 65002
+----
+
+
+=== Vérifiez la configuration : 
+
+Affichez les routes BGP apprises et publiées :
+
+[source, bash]
+----
+show ip bgp
+----
+
+
+=== Testez la connectivité :
+
+Les sous-réseaux annoncés via BGP doivent être atteignables.
+
+
+
+
+== Tests Pratiques
+
+=== Vérifiez les routes :
+
+Connectez-vous au routeur et inspectez la table de routage dynamique avec :
+
+[source, bash]
+----
+show ip route
+----
+
+
+=== Surveillez les protocoles :
+
+
+=== Observez les mises à jour et voisins OSPF, RIP, ou BGP :
+
+[source, bash]
+----
+debug ip ospf events
+debug ip rip events
+debug ip bgp updates
+----
+
+
+=== Simulez des défaillances :
+
+Déconnectez une interface VLAN pour voir comment le protocole réagit et met à jour les routes.

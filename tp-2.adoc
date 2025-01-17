@@ -1,0 +1,159 @@
+= TP 2
+
+== Partie 1 : Les ACLs
+
+Nous allons voir ou plutôt revoir comment configurer des ACLs sur un routeur Stonework afin de restreindre ou autoriser le trafic entre deux Alpine Linux connectés via différents VLANs.
+
+
+=== Objectifs
+
+[%step]
+* Bloquer les pings (ICMP) entre les deux machines Alpine Linux (situées dans VLAN 10 et VLAN 20).
+* Permettre uniquement certains types de trafic, comme HTTP ou SSH.
+* Tester la configuration avec des outils tels que ping, curl, et ssh.
+
+
+== Pré-requis
+
+* VLAN 10 : IP réseau 192.168.10.0/24 (Alpine 1 - 192.168.10.2).
+* VLAN 20 : IP réseau 192.168.20.0/24 (Alpine 2 - 192.168.20.2).
+* Le routage inter-VLAN est déjà configuré sur le routeur.
+* Open vSwitch configure les ports dans les VLANs correspondants.
+
+== Étapes de Configuration
+
+
+
+=== 1. Créer une ACL pour Bloquer le Trafic ICMP
+
+* Accédez au routeur Stonework via son interface CLI.
+* Créez une ACL pour bloquer le trafic ICMP (ping) entre les deux VLANs :
+
+[source, bash]
+----
+access-list 101 deny icmp 192.168.10.0 0.0.0.255 192.168.20.0 0.0.0.255
+access-list 101 permit tcp 192.168.10.0 0.0.0.255 192.168.20.0 0.0.0.255 eq 22
+access-list 101 permit tcp 192.168.10.0 0.0.0.255 192.168.20.0 0.0.0.255 eq 80
+access-list 101 permit tcp 192.168.10.0 0.0.0.255 192.168.20.0 0.0.0.255 eq 443
+access-list 101 permit ip any any
+----
+
+
+Bon, vous connaissez déjà vu les protocoles utilisés/
+
+
+=== ..
+
+* La première ligne bloque le trafic ICMP entre les deux VLANs.
+* Les lignes qui suivent permettent le trafic TCP sur les ports SSH (22), HTTP (80) et HTTPS (443).
+* La dernière ligne autorise tout autre trafic, pour éviter de bloquer tout.
+
+== 2. Appliquer l’ACL à l’Interface VLAN
+
+Il nous faut ensuite appliquer l’ACL à l'interface des sous-interfaces VLANs sur le routeur.
+
+
+=== Pour VLAN 10 :
+
+[source, bash]
+----
+interface gigabitEthernet 0/0.10
+ip access-group 101 in
+----
+
+
+=== Pour VLAN 20 :
+
+[source, bash]
+----
+interface gigabitEthernet 0/0.20
+ip access-group 101 in
+----
+
+
+=== Remarque :
+
+L'ACL est appliquée en entrée sur les interfaces, ce qui signifie qu'elle filtre le trafic arrivant sur ces VLANs.
+
+== 3. Tester la Configuration
+
+=== Test 1 : Bloquer ICMP (ping)
+
+=== Depuis Alpine 1 (VLAN 10) :
+
+[source, bash]
+----
+ping 192.168.20.2
+----
+
+
+=== Résultat attendu : 
+
+Le ping échoue, car l’ICMP est bloqué par l’ACL.
+
+
+=== Depuis Alpine 2 (VLAN 20) :
+
+[source, bash]
+----
+ping 192.168.10.2
+----
+
+
+=== Résultat attendu : 
+
+Le ping échoue, pour la même raison.
+
+=== Test 2 : Autoriser SSH
+
+Depuis Alpine 1, essayez de vous connecter à Alpine 2 en SSH :
+
+[source, bash]
+----
+ssh jo@192.168.20.2
+----
+
+
+=== Résultat attendu : 
+
+La connexion SSH réussit, car l’ACL permet le port 22.
+
+=== Test 3 : Autoriser HTTP
+
+
+Depuis Alpine 1, envoyez une requête HTTP à Alpine 2 (si un serveur web est configuré sur Alpine 2, mains normalement à moins d'un élan d'autonomie vous ne l'aurez pas créé) :
+
+[source, bash]
+----
+curl http://192.168.20.2
+----
+
+=== Résultat attendu : 
+
+
+La requête HTTP réussit, car le port 80 est autorisé.
+
+=== Test 4 : 
+
+Bloquer le Trafic Non Autorisé
+
+=== ...
+
+Essayez de vous connecter sur un autre port non autorisé, par exemple 8080 :
+
+[source, bash]
+----
+curl http://192.168.20.2:8080
+----
+
+
+=== Résultat attendu : La connexion échoue, car l'ACL ne permet pas ce port.
+
+
+
+
+
+
+
+
+
